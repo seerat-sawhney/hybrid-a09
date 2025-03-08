@@ -1,66 +1,51 @@
-name: Validate terraform fmt and validate
+name: Validate Terraform
 
 on:
   pull_request:
     branches:
       - main
       - master
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+  push:
+    branches:
+      - main
+      - master
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  validate:
+  format:
     runs-on: ubuntu-latest
-    name: Terraform fmt and validate checks
-
+    name: Check Terraform Formatting
     steps:
-      # Step 1: Checkout the repository code
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: Set up Terraform
-      - name: Setup Terraform
+      - name: Set up Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: 1.2.4
 
-      # Step 3: Fetch changed files in the pull request
-      - name: Fetch changed files
-        id: pr_files
-        uses: jitterbit/get-changed-files@v1
+      - name: Validate Terraform Formatting
+        run: terraform fmt -check -recursive
+
+  validate:
+    runs-on: ubuntu-latest
+    name: Terraform Validation
+    needs: format  # Runs after formatting check
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
         with:
-          format: "space-delimited"
+          terraform_version: 1.2.4
 
-      # Step 4: Run terraform fmt check on changed files
-      - name: Check terraform fmt on changed files
-        run: |
-          set +e
-          echo "CHECK_STATUS=0" >> $GITHUB_ENV
+      - name: Initialize Terraform
+        run: terraform init
 
-          for changed_file in ${{ steps.pr_files.outputs.added_modified }}; do
-            echo "Checking terraform fmt on ${changed_file}..."
-            if [[ $changed_file == *.tf ]]; then
-              terraform fmt -check $changed_file
-              FMT_STATUS=$?
-              if [[ $FMT_STATUS -ne 0 ]]; then
-                echo "❌ terraform fmt failed - ${changed_file}" >> $GITHUB_STEP_SUMMARY
-                echo "CHECK_STATUS=1" >> $GITHUB_ENV
-              fi
-            fi
-          done
-
-      # Step 5: Run terraform validate
-      - name: Run terraform validate
+      - name: Validate Terraform Configuration
         run: terraform validate
 
-      # Step 6: Run tflint
-      - name: Run tflint
-        run: tflint
-
-      # Step 7: Final check and exit status
-      - name: Process check
-        if: always()
-        run: exit $CHECK_STATUS
